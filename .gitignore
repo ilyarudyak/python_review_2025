@@ -10,6 +10,10 @@
 # Icon must end with two \r
 Icon
 
+# Exclude data folders
+01-jv-python/data
+02-pandas-lerner/data
+03-pandas-packt/data
 
 # Thumbnails
 ._*
