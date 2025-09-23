@@ -52,3 +52,34 @@ class Employees:
         
         return df
 
+
+class NETFLIX:
+
+    # Column names: title,director,date_added,type
+    TITLE = 'title'
+    DIRECTOR = 'director'
+    DATE_ADDED = 'date_added'
+    TYPE = 'type'
+
+    def __init__(self, 
+                 filepath='data/netflix.csv',
+                 date_format='%d-%b-%y'):  # To match '15-Apr-17'
+        
+        # Default parameters
+        self.filepath = filepath
+        self.date_format = date_format
+
+        # Load the DataFrame
+        self.netflix = self._load_data()
+
+    def _load_data(self):
+        df = pd.read_csv(
+            self.filepath,
+            parse_dates=[self.DATE_ADDED],
+            date_format={self.DATE_ADDED: self.date_format},
+        )
+
+        # Convert 'type' to category
+        df[self.TYPE] = df[self.TYPE].astype('category')
+        
+        return df
