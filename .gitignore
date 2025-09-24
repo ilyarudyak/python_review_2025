@@ -1,6 +1,12 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,macos
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,visualstudiocode,macos
 
+### Data Files ###
+*.csv
+*.txt
+*.json
+**data
+
 ### macOS ###
 # General
 .DS_Store
