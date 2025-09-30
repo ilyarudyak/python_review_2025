@@ -26,14 +26,37 @@ class CollegeScorecard:
         self.univers = pd.read_csv(self.institutions_filename, usecols=self.institutions_usecols)
         self.fields = pd.read_csv(self.fields_filename, usecols=self.fields_usecols)
 
-        # University columns names
-        self.id_col = 'OPEID6'
-        self.name_col = 'INSTNM'
-        self.city_col = 'CITY'
-        self.state_col = 'STABBR'
-        self.admission_rate_col = 'ADM_RATE'
-        self.tuition_out_col = 'TUITIONFEE_OUT'
-        self.earnings_col = 'MD_EARN_WNE_P10'
+        ################################################################################
+        ########################### University columns names ###########################
+        ################################################################################
+
+        # ID, name, city, state
+        self.id_col = 'OPEID6' # Unique ID (integer) for each educational institution
+        self.name_col = 'INSTNM' # Institution name
+        self.city_col = 'CITY' # Institution city
+        self.state_col = 'STABBR' # Institution state (abbreviation)
+
+        # Financial aid and tuition
+        self.pell_col = 'FTFTPCTPELL' # Percentage of Pell-grant recipients
+        self.tuition_in_col = 'TUITIONFEE_IN' # In-state tuition
+        self.tuition_out_col = 'TUITIONFEE_OUT' # Out-of-state tuition
+
+        # Net and average prices
+        self.net_price_pub = 'NPT4_PUB' # Net price for public institutions
+        self.net_price_priv = 'NPT4_PRIV' # Net price for private institutions
+        self.avg_price_low_pub = 'NPT41_PUB' # Average price paid by people in the lowest income bracket
+        self.avg_price_low_priv = 'NPT41_PRIV' # Average price paid by people in the lowest income bracket
+        self.avg_price_high_pub = 'NPT45_PUB' # Average price paid by people in the highest income bracket
+        self.avg_price_high_priv = 'NPT45_PRIV' # Average price paid by people in the highest income bracket
+
+        # Earnings, admission, and completion rates
+        self.earnings_col = 'MD_EARN_WNE_P10' # Median earnings 10 years following graduation
+        self.admission_rate_col = 'ADM_RATE' # Admission rate
+        self.completion_rate_col = 'C100_4' # Completion rate within 4 years
+
+        ################################################################################
+        ######################### Fields of study columns names ########################
+        ################################################################################
 
         # Field of study columns names
         self.fields_degree_col = 'CREDDESC'
@@ -56,6 +79,18 @@ class CollegeScorecard:
 
         self.undergrad_univers_set = self._get_undergrad_univers(return_type='set')
         self.grad_univers_set = self._get_grad_univers(return_type='set')
+
+        self.ivy_plus = ['Harvard University', 
+                        'Massachusetts Institute of Technology',
+                        'Yale University',
+                        'Columbia University in the City of New York',
+                        'Brown University',
+                        'Stanford University',
+                        'University of Chicago',
+                        'Dartmouth College',
+                        'University of Pennsylvania',
+                        'Cornell University',
+                        'Princeton University']
 
     def _get_undergrad_univers(self, return_type='df'):
         """Get universities that offer undergraduate programs (bachelor's degrees)."""
@@ -138,4 +173,109 @@ class CollegeScorecard:
         plt.xlabel('Tuition (Out-of-State)')
         plt.ylabel('Admission Rate')
         plt.title('Tuition vs. Admission Rate, Colored by Median Earnings (10 Years)')
+        plt.show()
+
+    def get_top_univers_tuition_pell(self):
+        """
+        Find universities in the top 25% of both tuition and Pell grants.
+        Returns the number of such universities and the top 5 sorted by institution name.
+        """
+        # Remove NaNs from tuition and pell grant columns
+        univers_clean = self.univers.dropna(subset=[self.tuition_out_col, self.pell_col])
+        
+        # Compute the 75th percentile of tuition
+        tuition_75th_percentile = univers_clean[self.tuition_out_col].quantile(0.75)
+        
+        # Find universities with tuition greater than the 75th percentile
+        mask_75th_tuition = univers_clean[self.tuition_out_col] > tuition_75th_percentile
+        
+        # Compute the 75th percentile of Pell grants
+        pell_75th_percentile = univers_clean[self.pell_col].quantile(0.75)
+        
+        # Find universities with Pell grants greater than the 75th percentile
+        mask_75th_pell = univers_clean[self.pell_col] > pell_75th_percentile
+        
+        # Find universities that are in the top 25% of both tuition and Pell grants
+        mask_top_both = mask_75th_tuition & mask_75th_pell
+        top_both_univs = univers_clean[mask_top_both]
+        
+        # Number of such universities
+        num_top_both = top_both_univs.shape[0]
+        
+        # Top 5 universities ordered by institution name
+        top_univers = top_both_univs[[self.name_col, self.city_col, self.state_col]].sort_values(by=self.name_col)
+        
+        return top_univers
+
+    def get_cheapest_to_top(self, type='pub'):
+        """
+        Find universities that are in the cheapest 25% net price and have top 25% salaries 10 years after graduation.
+        type: 'pub' for public, 'priv' for private.
+        Returns the filtered DataFrame with columns [id, name, city, state], sorted by state and city.
+        """
+        if type == 'pub':
+            net_price_col = self.net_price_pub
+        elif type == 'priv':
+            net_price_col = self.net_price_priv
+        else:
+            raise ValueError("Type must be 'pub' or 'priv'")
+        
+        # Find the cheapest 25% schools
+        cheapest_25_quant = self.univers[net_price_col].quantile(0.25)
+        mask_cheapest_25 = self.univers[net_price_col] <= cheapest_25_quant
+        
+        # Find the top 25% salaries
+        top_25_quant_salary = self.univers[self.earnings_col].quantile(0.75)
+        mask_top_25_salary = self.univers[self.earnings_col] >= top_25_quant_salary
+        
+        # Filter the universities that meet both criteria
+        columns = [self.id_col, self.name_col, self.city_col, self.state_col]
+        filtered_univers = self.univers.loc[mask_cheapest_25 & mask_top_25_salary, columns]
+        
+        # Sort by state and city
+        filtered_univers = filtered_univers.sort_values(by=[self.state_col, self.city_col])
+        
+        return filtered_univers
+
+    def plot_avg_earnings_by_state(self, figsize=(14, 3), top=10, bottom=10):
+        """
+        Create a bar plot for the average earnings per state, showing only the top N (highest) and bottom N (lowest) states,
+        sorted by ascending pay.
+        """
+        # Clean data: drop rows with NaN in state or earnings
+        clean_data = self.univers.dropna(subset=[self.state_col, self.earnings_col])
+        
+        # Compute average earnings per state
+        avg_earnings = clean_data.groupby(self.state_col)[self.earnings_col].mean()
+
+        # Sort by ascending earnings
+        sorted_earnings = avg_earnings.sort_values()
+        
+        # Get bottom N (lowest) and top N (highest)
+        bottom_earnings = sorted_earnings.head(bottom)
+        top_earnings = sorted_earnings.tail(top)
+
+        # Combine for plotting: bottom N + top N, still sorted ascending
+        selected_states = pd.concat([bottom_earnings, top_earnings])
+
+        # Plot
+        plt.figure(figsize=figsize)
+        selected_states.plot(kind='bar')
+        plt.title(f'Average Earnings by State (Top {top} Highest and Bottom {bottom} Lowest)')
+        plt.ylabel('Average Earnings')
+        plt.xlabel('State')
+        plt.xticks(rotation=90)
+        plt.show()
+
+    def plot_earnings_boxplot_by_state(self, figsize=(6, 4)):
+        """
+        Create a boxplot for the average median earnings by state.
+        """
+        # Compute average earnings per state
+        avg_earnings = self.univers.groupby(self.state_col)[self.earnings_col].mean().dropna()
+        
+        # Create the boxplot
+        plt.figure(figsize=figsize)
+        avg_earnings.plot(kind='box')
+        plt.title('Boxplot of Average Median Earnings by State')
         plt.show()
