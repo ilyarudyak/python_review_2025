@@ -1001,18 +1001,331 @@ LIMIT 5;
 -- Let's create another variant of this table. 
 -- It should contain 3 columns: Country, HasCustomer (Yes/No), HasSupplier (Yes/No)
 SELECT
-    Country,
-    'Yes' AS HasCustomer,
-    'No' AS HasSupplier
-FROM
-    Customers AS c
-UNION
+    co.Country,
+    CASE WHEN EXISTS (SELECT 1 FROM Customers c WHERE c.Country = co.Country) THEN 'Yes' ELSE 'No' END AS HasCustomer,
+    CASE WHEN EXISTS (SELECT 1 FROM Suppliers s WHERE s.Country = co.Country) THEN 'Yes' ELSE 'No' END AS HasSupplier
+FROM (
+    SELECT Country FROM Customers
+    UNION
+    SELECT Country FROM Suppliers
+) AS co
+GROUP BY co.Country
+ORDER BY co.Country;
+
+/*
+Actual results:
++-------------+-------------+-------------+
+| Country     | HasCustomer | HasSupplier |
++-------------+-------------+-------------+
+| Argentina   | Yes         | No          |
+| Australia   | No          | Yes         |
+| Austria     | Yes         | No          |
+| Belgium     | Yes         | No          |
+| Brazil      | Yes         | Yes         |
+| Canada      | Yes         | Yes         |
+| Denmark     | Yes         | Yes         |
+| Finland     | Yes         | Yes         |
+| France      | Yes         | Yes         |
+| Germany     | Yes         | Yes         |
+| Ireland     | Yes         | No          |
+| Italy       | Yes         | Yes         |
+| Japan       | No          | Yes         |
+| Mexico      | Yes         | No          |
+| Netherlands | No          | Yes         |
+| Norway      | Yes         | Yes         |
+| Poland      | Yes         | No          |
+| Portugal    | Yes         | No          |
+| Singapore   | No          | Yes         |
+| Spain       | Yes         | Yes         |
+| Sweden      | Yes         | Yes         |
+| Switzerland | Yes         | No          |
+| UK          | Yes         | Yes         |
+| USA         | Yes         | Yes         |
+| Venezuela   | Yes         | No          |
++-------------+-------------+-------------+
+25 rows in set (0.01 sec)
+*/
+
+/*
+54. Countries with suppliers or customers - version 3
+The output of the above is improved, but it’s still not ideal What we’d really
+like to see is the country name, the total suppliers, and the total customers.
+*/
+
+-- Let's modify the previous query to count the number of customers and suppliers per country
+-- instead of just showing Yes/No
 SELECT
-    Country,
-    'No' AS HasCustomer,
-    'Yes' AS HasSupplier
+    co.Country,
+    COUNT(DISTINCT c.CustomerID) AS TotalCustomers,
+    COUNT(DISTINCT s.SupplierID) AS TotalSuppliers
+FROM (
+    SELECT Country FROM Customers
+    UNION
+    SELECT Country FROM Suppliers
+) AS co
+LEFT JOIN Customers AS c ON co.Country = c.Country
+LEFT JOIN Suppliers AS s ON co.Country = s.Country
+GROUP BY co.Country
+ORDER BY co.Country;
+
+-- Let's compare the results with no DISTINCT in the COUNT
+SELECT
+    co.Country,
+    COUNT(c.CustomerID) AS TotalCustomers,
+    COUNT(s.SupplierID) AS TotalSuppliers
+FROM (
+    SELECT Country FROM Customers
+    UNION
+    SELECT Country FROM Suppliers
+) AS co
+LEFT JOIN Customers AS c ON co.Country = c.Country
+LEFT JOIN Suppliers AS s ON co.Country = s.Country
+GROUP BY co.Country
+ORDER BY co.Country;
+
+/*
+Actual results:
++-------------+----------------+----------------+
+| Country     | TotalCustomers | TotalSuppliers |
++-------------+----------------+----------------+
+| Argentina   |              3 |              0 |
+| Australia   |              0 |              2 |
+| Austria     |              2 |              0 |
+| Belgium     |              2 |              0 |
+| Brazil      |              9 |              1 |
+| Canada      |              3 |              2 |
+| Denmark     |              2 |              1 |
+| Finland     |              2 |              1 |
+| France      |             11 |              3 |
+| Germany     |             11 |              3 |
+| Ireland     |              1 |              0 |
+| Italy       |              3 |              2 |
+| Japan       |              0 |              2 |
+| Mexico      |              5 |              0 |
+| Netherlands |              0 |              1 |
+| Norway      |              1 |              1 |
+| Poland      |              1 |              0 |
+| Portugal    |              2 |              0 |
+| Singapore   |              0 |              1 |
+| Spain       |              5 |              1 |
+| Sweden      |              2 |              2 |
+| Switzerland |              2 |              0 |
+| UK          |              7 |              2 |
+| USA         |             13 |              4 |
+| Venezuela   |              4 |              0 |
++-------------+----------------+----------------+
+25 rows in set (0.06 sec)
+*/
+
+/* Just 3 problems left: 55, 56, 57 */
+
+/*
+55. First order in each country
+Looking at the Orders table—we’d like to show details for each order that was
+the first in that particular country, ordered by OrderID. We need the following columns
+ShipCountry, CustomerID, OrderID, OrderDate.
+*/
+
+SELECT
+    ShipCountry,
+    CustomerID,
+    OrderID,
+    DATE(OrderDate) AS OrderDate
+FROM Orders o1
+WHERE OrderID = (
+    SELECT MIN(OrderID)
+    FROM Orders o2
+    WHERE o1.ShipCountry = o2.ShipCountry
+)
+ORDER BY ShipCountry;
+
+/*
+Actual results:
++-------------+------------+---------+------------+
+| ShipCountry | CustomerID | OrderID | OrderDate  |
++-------------+------------+---------+------------+
+| Argentina   | OCEAN      |   10409 | 2015-01-09 |
+| Austria     | ERNSH      |   10258 | 2014-07-17 |
+| Belgium     | SUPRD      |   10252 | 2014-07-09 |
+| Brazil      | HANAR      |   10250 | 2014-07-08 |
+| Canada      | MEREP      |   10332 | 2014-10-17 |
+| Denmark     | SIMOB      |   10341 | 2014-10-29 |
+| Finland     | WARTH      |   10266 | 2014-07-26 |
+| France      | VINET      |   10248 | 2014-07-04 |
+| Germany     | TOMSP      |   10249 | 2014-07-05 |
+| Ireland     | HUN        |   10298 | 2014-09-05 |
+| Italy       | MAGAA      |   10275 | 2014-08-07 |
+| Mexico      | CENTC      |   10259 | 2014-07-18 |
+| Norway      | SANTG      |   10387 | 2014-12-18 |
+| Poland      | WOLZA      |   10374 | 2014-12-05 |
+| Portugal    | FURIB      |   10328 | 2014-10-14 |
+| Spain       | ROMEY      |   10281 | 2014-08-14 |
+| Sweden      | FOLKO      |   10264 | 2014-07-24 |
+| Switzerland | CHOPS      |   10254 | 2014-07-11 |
+| UK          | BSBEV      |   10289 | 2014-08-26 |
+| USA         | RATTC      |   10262 | 2014-07-22 |
+| Venezuela   | HILAA      |   10257 | 2014-07-16 |
++-------------+------------+---------+------------+
+21 rows in set (0.13 sec)
+*/
+
+/*
+56. Customers with multiple orders in 5 day period
+There are some customers for whom freight is a major expense when ordering from
+Northwind. However, by batching up their orders, and making one larger order
+instead of multiple smaller orders in a short period of time, they could reduce
+their freight costs significantly. Show those customers who have made more than
+1 order in a 5 day period. The sales people will use this to help customers
+reduce their costs.
+*/
+
+-- Let's do this problem step-by-step.
+-- First, let's just fixed a customer and see their orders
+SELECT
+    o.CustomerID,
+    o.OrderID,
+    o.OrderDate
 FROM
-    Suppliers AS s
+    Orders AS o
+WHERE
+    o.CustomerID = 'ALFKI'
 ORDER BY
-    Country ASC
-LIMIT 5;
+    o.OrderDate;
+
+-- Let's use LAG window function to get the previous order date for each order
+-- And store it in a separate column. We will compute the difference later on
+SELECT
+    o.CustomerID,
+    o.OrderID,
+    DATE(o.OrderDate) AS OrderDate,
+    LAG(DATE(o.OrderDate)) OVER (PARTITION BY o.CustomerID ORDER BY o.OrderDate) AS PreviousOrderDate
+FROM
+    Orders AS o
+WHERE
+    o.CustomerID = 'ALFKI'
+ORDER BY
+    o.OrderDate;
+
+-- Let's try the same query but without PARTITION BY just to see how LAG works
+SELECT
+    o.CustomerID,
+    o.OrderID,
+    DATE(o.OrderDate) AS OrderDate,
+    LAG(DATE(o.OrderDate)) OVER (ORDER BY o.OrderDate) AS PreviousOrderDate
+FROM
+    Orders AS o
+WHERE
+    o.CustomerID = 'ALFKI'
+ORDER BY
+    o.OrderDate;
+
+-- Let's compute the difference in days between the current order and previous order
+SELECT
+    o.CustomerID,
+    o.OrderID,
+    DATE(o.OrderDate) AS OrderDate,
+    LAG(DATE(o.OrderDate)) OVER (PARTITION BY o.CustomerID ORDER BY o.OrderDate) AS PreviousOrderDate,
+    DATEDIFF(DATE(o.OrderDate), LAG(DATE(o.OrderDate)) OVER (PARTITION BY o.CustomerID ORDER BY o.OrderDate)) AS DaysSincePreviousOrder
+FROM
+    Orders AS o
+WHERE
+    o.CustomerID = 'ALFKI'
+ORDER BY
+    o.OrderDate;
+
+-- Let's now use CTE to improve the previous query
+WITH LaggedOrders AS (
+    SELECT
+        o.CustomerID,
+        o.OrderID,
+        DATE(o.OrderDate) AS OrderDate,
+        LAG(DATE(o.OrderDate)) OVER (PARTITION BY o.CustomerID ORDER BY o.OrderDate) AS PreviousOrderDate
+    FROM
+        Orders AS o
+    WHERE
+        o.CustomerID = 'ALFKI'
+)
+SELECT
+    CustomerID,
+    OrderID,
+    OrderDate,
+    PreviousOrderDate,
+    DATEDIFF(OrderDate, PreviousOrderDate) AS DaysSincePreviousOrder
+FROM
+    LaggedOrders
+ORDER BY
+    OrderDate;
+
+-- Let's determine if this particular customer has multiple orders in a 5 day period
+-- Let's use multiple CTEs to make it clearer
+WITH LaggedOrders AS (
+    SELECT
+        o.CustomerID,
+        o.OrderID,
+        DATE(o.OrderDate) AS OrderDate,
+        LAG(DATE(o.OrderDate)) OVER (PARTITION BY o.CustomerID ORDER BY o.OrderDate) AS PreviousOrderDate
+    FROM
+        Orders AS o
+    WHERE
+        o.CustomerID = 'ALFKI'
+),
+OrderDifferences AS (
+    SELECT
+        CustomerID,
+        OrderID,
+        OrderDate,
+        PreviousOrderDate,
+        DATEDIFF(OrderDate, PreviousOrderDate) AS DaysSincePreviousOrder
+    FROM
+        LaggedOrders
+)
+SELECT
+    CustomerID,
+    COUNT(OrderID) AS OrdersIn5Days
+FROM
+    OrderDifferences
+WHERE
+    DaysSincePreviousOrder IS NOT NULL
+    AND DaysSincePreviousOrder <= 5
+GROUP BY
+    CustomerID
+HAVING
+    COUNT(OrderID) > 1;
+
+-- Let's finalize the query by removing the filter for a specific customer
+WITH LaggedOrders AS (
+    SELECT
+        o.CustomerID,
+        o.OrderID,
+        DATE(o.OrderDate) AS OrderDate,
+        LAG(DATE(o.OrderDate)) OVER (PARTITION BY o.CustomerID ORDER BY o.OrderDate) AS PreviousOrderDate
+    FROM
+        Orders AS o
+),
+OrderDifferences AS (
+    SELECT
+        CustomerID,
+        OrderID,
+        OrderDate,
+        PreviousOrderDate,
+        DATEDIFF(OrderDate, PreviousOrderDate) AS DaysSincePreviousOrder
+    FROM
+        LaggedOrders
+)
+SELECT
+    CustomerID,
+    OrderID,
+    OrderDate,
+    PreviousOrderDate,
+    DaysSincePreviousOrder
+FROM
+    OrderDifferences
+WHERE
+    DaysSincePreviousOrder IS NOT NULL
+    AND DaysSincePreviousOrder <= 5
+ORDER BY
+    CustomerID;
+
+/*
+These were the advanced problems in the book, 26 problems in total.
+*/
