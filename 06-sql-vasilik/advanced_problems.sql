@@ -870,3 +870,149 @@ ordered. He doesn’t want to have to edit SQL in order to change the boundaries
 of the customer groups. How would you write the SQL? There's a table called
 CustomerGroupThreshold that you will need to use. Use only orders from 2016.
 */
+
+-- First, let's see the contents of the CustomerGroupThresholds table
+/*
+mysql> DESCRIBE CustomerGroupThresholds;
++-------------------+---------------+------+-----+---------+-------+
+| Field             | Type          | Null | Key | Default | Extra |
++-------------------+---------------+------+-----+---------+-------+
+| CustomerGroupName | varchar(20)   | YES  |     | NULL    |       |
+| RangeBottom       | decimal(16,5) | YES  |     | NULL    |       |
+| RangeTop          | decimal(20,5) | YES  |     | NULL    |       |
++-------------------+---------------+------+-----+---------+-------+
+3 rows in set (0.03 sec)
+
+mysql> SELECT * FROM CustomerGroupThresholds;
++-------------------+-------------+-----------------------+
+| CustomerGroupName | RangeBottom | RangeTop              |
++-------------------+-------------+-----------------------+
+| Low               |     0.00000 |             999.99990 |
+| Medium            |  1000.00000 |            4999.99990 |
+| High              |  5000.00000 |            9999.99990 |
+| Very High         | 10000.00000 | 922337203685477.58070 |
++-------------------+-------------+-----------------------+
+4 rows in set (0.01 sec)
+*/
+
+-- Let's first prepare a temporary table with the customer totals. We group by
+-- CustomerID and sum the total orders without discount. We use orders from 2016 only.
+
+-- CustomerTotals temporary table already exists from previous query, so we need to drop it first
+DROP TEMPORARY TABLE IF EXISTS CustomerTotals;
+CREATE TEMPORARY TABLE CustomerTotals AS (
+    SELECT
+        c.CustomerID,
+        c.CompanyName,
+        ROUND(SUM(od.UnitPrice * od.Quantity), 2) AS TotalOrders
+    FROM
+        Customers AS c
+        JOIN Orders AS o ON c.CustomerID = o.CustomerID
+        JOIN OrderDetails AS od ON o.OrderID = od.OrderID
+    WHERE
+        YEAR(o.OrderDate) = 2016
+    GROUP BY
+        c.CustomerID,
+        c.CompanyName
+);
+
+-- (1) Using a conditional join: ON ct.TotalOrders BETWEEN cgt.RangeBottom AND cgt.RangeTop
+SELECT
+    ct.CustomerID,
+    ct.CompanyName,
+    ct.TotalOrders,
+    cgt.CustomerGroupName
+FROM
+    CustomerTotals AS ct
+    JOIN CustomerGroupThresholds AS cgt ON 
+        ct.TotalOrders BETWEEN cgt.RangeBottom AND cgt.RangeTop
+LIMIT 5;
+
+/*
+Actual results:
++------------+------------------------------------+-------------+-------------------+
+| CustomerID | CompanyName                        | TotalOrders | CustomerGroupName |
++------------+------------------------------------+-------------+-------------------+
+| ALFKI      | Alfreds Futterkiste                |      2302.2 | Medium            |
+| ANATR      | Ana Trujillo Emparedados y helados |       514.4 | Low               |
+| ANTON      | Antonio Moreno Taquería            |         660 | Low               |
+| AROUT      | Around the Horn                    |      5838.5 | High              |
+| BSBEV      | B's Beverages                      |        2431 | Medium            |
++------------+------------------------------------+-------------+-------------------+
+5 rows in set (0.00 sec)
+*/
+
+-- (2) Using a CASE in SELECT with a correlated subquery
+SELECT
+    ct.CustomerID,
+    ct.CompanyName,
+    ct.TotalOrders,
+    (SELECT
+        cgt.CustomerGroupName
+    FROM
+        CustomerGroupThresholds AS cgt
+    WHERE
+        ct.TotalOrders BETWEEN cgt.RangeBottom AND cgt.RangeTop
+    LIMIT 1
+    ) AS CustomerGroupName
+FROM
+    CustomerTotals AS ct
+LIMIT 5;
+
+/*
+Actual results:
++------------+------------------------------------+-------------+-------------------+
+| CustomerID | CompanyName                        | TotalOrders | CustomerGroupName |
++------------+------------------------------------+-------------+-------------------+
+| ALFKI      | Alfreds Futterkiste                |      2302.2 | Medium            |
+| ANATR      | Ana Trujillo Emparedados y helados |       514.4 | Low               |
+| ANTON      | Antonio Moreno Taquería            |         660 | Low               |
+| AROUT      | Around the Horn                    |      5838.5 | High              |
+| BSBEV      | B's Beverages                      |        2431 | Medium            |
++------------+------------------------------------+-------------+-------------------+
+5 rows in set (0.04 sec)
+*/
+
+/*
+52. Countries with suppliers or customers
+Some Northwind employees are planning a business trip, and would like to visit
+as many suppliers and customers as possible. For their planning, they’d like to
+see a list of all countries where suppliers and/or customers are based.
+*/
+
+-- Let's first create a table with countries with customers and suppliers.
+-- It should contain 2 columns: Country and Source (Customer or Supplier)
+SELECT
+    c.Country,
+    'Customer' AS Source
+FROM
+    Customers AS c
+UNION
+SELECT
+    s.Country,
+    'Supplier' AS Source
+FROM
+    Suppliers AS s
+ORDER BY
+    Source, 
+    Country ASC
+LIMIT 5;
+
+-- Let's create another variant of this table. 
+-- It should contain 3 columns: Country, HasCustomer (Yes/No), HasSupplier (Yes/No)
+SELECT
+    Country,
+    'Yes' AS HasCustomer,
+    'No' AS HasSupplier
+FROM
+    Customers AS c
+UNION
+SELECT
+    Country,
+    'No' AS HasCustomer,
+    'Yes' AS HasSupplier
+FROM
+    Suppliers AS s
+ORDER BY
+    Country ASC
+LIMIT 5;
